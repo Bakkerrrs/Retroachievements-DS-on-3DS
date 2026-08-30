@@ -26,6 +26,30 @@ cd "$(dirname "$0")/.."
 
 OUT=${1:-nds-bootstrap-release.nds}
 
+# From scratch, always, and that is a finding rather than caution.
+#
+# The ROM handed over for a hardware test was for a long time whatever an *incremental* build left on
+# disk, and this project's development involves running `make` inside individual cardengine
+# directories all day to measure link margins. Building the same commit clean, at the same path,
+# produced a **different binary** -- so at least one artifact in that tree was not being rebuilt when
+# it should have been, and the ROM under test did not reproduce from its own source.
+#
+# That is the one thing this script exists to prevent: it already refuses to ship a build that is not
+# what it claims. A binary nobody can reproduce is exactly that, and it is worse than a wrong flag
+# because a hardware result gets attached to it. Every reading in docs/devlogs is a reading of some
+# specific binary; if that binary cannot be rebuilt, the reading cannot be checked.
+#
+# The cost is a few minutes per release. The alternative is test results that mean nothing.
+#
+# **This does not make the build reproducible for anyone else**, and that is a separate, known
+# limitation: dsiwifi's lwip compiles __FILE__ into 26 assertion strings, so the absolute source path
+# is embedded in the ROM. Two clean builds of the same commit at different paths differ -- and because
+# the payloads are LZ77-compressed, a handful of changed bytes cascades into most of the file. Same
+# path, same result; different path, different bytes. Fixing that means -ffile-prefix-map through
+# upstream's build, which is not this script's to change.
+echo "cleaning, so the deliverable is built from source rather than from what is lying around"
+make clean >/dev/null 2>&1 || true
+
 echo "checking RA_LAUNCHER_WIFI=0 still compiles"
 make RA_LAUNCHER_WIFI=0 >/dev/null 2>&1
 
