@@ -1,0 +1,141 @@
+
+-- stage 0: the bus --
+isDSiMode        yes
+SCFG_EXT  ARM9   8307F100
+SCFG_EXT  ARM7   93FFFB06
+SCFG_CLK  ARM9   00000081
+SCFG_ROM  ARM9   00000001
+SCFG_EXT7 BIT(18) set
+
+-- stage 0b: the ROM's RetroAchievements hash --
+ROM              sd:/roms/0022 - Super Mario 64 DS (Europe) (En,Fr,De,Es,It) (patched).nds
+[32mhash             c3b1916756737f2c4117cc95c1d51ac7[37m
+arm9 / arm7      382212 / 150308 bytes
+would malloc     382212 bytes
+heap after hash  53248 safe + 9144 free, top 0232B000, limit 02FF4000
+
+-- stage 0c: the RetroAchievements config --
+ra.cfg           found
+username         Bakke
+password         (set, 10 chars)
+hardcore         0
+10 keys parsed but not acted on yet
+
+-- the ARM7 half --
+installWifiFIFO() is in
+
+-- stage 1-5: bring the chip up and associate --
+wifi_host_init
+did init iop
+Resetting SDIO...
+Skip opcond...
+Rev: 11
+Mfg 02010271 Cid 0d000001 (AR6014)
+AR6014 needs firmware upload 0.
+Reset cause: 00000002
+BMI version: 2300006f
+BMI finishing...
+Launching!
+Firmware 609c0202 ready, handshaking...
+wait ready
+HTC_MSG_READY, len 06 08
+WMI_READY_EVENT, 2 MAC: 04:03:d6:f9:36:52
+WMI_REG_DOMAIN_EVENT 80000188
+AR6014 fully initialized!
+scanning
+WMI_GET_CHANNEL_LIST_RESP num 0d
+netif is not up, old style port?WMI_BSSINFO MuMiMo24 (WPA2-PSK)
+  BSSID 00:5f:67:e9:f5:70
+  G TKIP P AES A PSK
+  3 4 2 -- 32 994
+WMI_CONNECT_EVENT len ca
+Connecting to AP
+WPA2 Handshake 1/4:
+Done auth
+WPA2 Handshake 3/4:
+Added GTK 1
+Done auth
+Dev 04:03:d6:f9:36:52
+AP 00:5f:67:e9:f5:70
+
+-- stage 6: DHCP --
+WMI_BSSINFO MuMiMo24 (WPA2-PSK)
+  BSSID 00:5f:67:e9:f5:70
+  G TKIP P AES A PSK
+  3 4 2 -- 34 994
+WMI pkt ID 1008, len 08 08
+IP               192.168.0.112
+heap with lwip up 53248 safe + 9088 free, top 0232B000, limit 02FF4000
+
+-- stage 7-9: reach the API over plain HTTP --
+resolved         retroachievements.org
+its address      104.26.3.251
+connected        port 80
+request sent
+peer closed after 996
+[32mthe API answered over plain HTTP[37m
+body: {"Success":false,"Status":401,"Code":"invalid_credentials","Error":"Invalid user\/password combination. Please try again."}
+heap after HTTP  53248 safe + 8960 free, top 0232B000, limit 02FF4000
+
+-- stage 10: log in --
+logging in as    Bakke
+1085 bytes back
+[32mlogged in, token (set, 16 chars)[37m
+heap after login 53248 safe + 8960 free, top 0232B000, limit 02FF4000
+
+-- stage 11: does the server know this ROM --
+asking about     c3b1916756737f2c4117cc95c1d51ac7
+880 bytes back
+[32mGameID           14856[37m
+heap after gameid 53248 safe + 8960 free, top 0232B000, limit 02FF4000
+
+-- stage 12: what has this account already earned --
+930 bytes back
+[32malready earned    1[37m
+  earned id      101000001
+heap after unlocks 53248 safe + 8960 free, top 0232B000, limit 02FF4000
+
+-- stage 13: fetch the set --
+asking for       game 14856
+body was         87747 bytes
+definitions      55 kept, 3 unofficial
+ids              55 with, 0 without
+already earned   0 of 1 matched this set
+[33mthe server named ids this set does not contain[37m
+[33m1 server notice(s) dropped, first id 101000001[37m
+context: "Title":"Warning: Unknown Emulator","Description":"Hardcore unlocks cannot be earned using this emulator.","MemAddr":"1=1.300.","Points":0,"Author":"","Modified":1786241472,"Created"block            28924 of 32759 used, 28924 wanted
+memaddr length   58 shortest, 6264 longest, of 8191
+def 1  1232      93121:R:0xH09cab4>0_R:0xH09cab5>0_R:0xH09cab6>0_R:0xH09c
+def 2  6270      93119:0xT0009caa8=0.100._P:0x 0017e874=64.1._P:0x 001890
+def 3  6270      93120:0xT0009caa8=0.100._P:0x 0017e874=64.1._P:0x 001890
+[32mstaged 55 definitions for the cardengine[37m
+heap after patch 53248 safe + 9088 free, top 0232B000, limit 02FF4000
+
+-- draining the tail --
+
+-- summary --
+chip             AR6014
+arrived          cold
+BMI / launch     yes / yes
+firmware / WMI   ready / ready
+associated       yes
+link ready       yes
+IP               192.168.0.112
+DNS / TCP / API  ok / ok / ok
+logged in        yes
+GameID           14856
+already earned   1
+definitions      55 in 28924 bytes
+log lines        37
+
+[33mreached stage 13 of 13[37m
+the set is staged for the cardengine.
+already earned   1
+definitions to   sd:/ra_definitions.txt
+
+-- giving the radio back --
+AR6014 deinitted
+ARM7            deinitted
+ARM9            timer and FIFO handler stopped
+
+radio down -- booting the game.

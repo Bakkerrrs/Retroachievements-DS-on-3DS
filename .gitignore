@@ -1,0 +1,152 @@
+# Object files
+*.o
+*.ko
+*.obj
+*.elf
+
+# Precompiled Headers
+*.gch
+*.pch
+
+# Libraries
+*.lib
+*.a
+*.la
+*.lo
+
+# Shared objects (inc. Windows DLLs)
+*.dll
+*.so
+*.so.*
+*.dylib
+
+# Executables
+*.out
+*.app
+*.dldi
+*.i*86
+*.x86_64
+*.hex
+
+# Debug files
+*.dSYM/
+
+# =========================
+# Operating System Files
+# =========================
+
+# OSX
+# =========================
+
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Thumbnails
+._*
+
+# Files that might appear in the root of a volume
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+
+# Directories potentially created on remote AFP share
+.AppleDB
+.AppleDesktop
+Network Trash Folder
+Temporary Items
+.apdisk
+
+# Windows
+# =========================
+
+# Windows image file caches
+Thumbs.db
+ehthumbs.db
+
+# Folder config file
+Desktop.ini
+
+# Recycle Bin used on file shares
+$RECYCLE.BIN/
+
+# Windows Installer files
+*.cab
+*.msi
+*.msm
+*.msp
+
+# Windows shortcuts
+*.lnk
+#*.nds
+#*.cia
+#*.d
+
+# Build folders
+retail/data/
+b4ds/data/
+hb/data/
+bin/
+build/
+
+# =========================
+# Project Files
+# =========================
+
+# Notepad++
+*.pnproj
+*.pnps
+*.bak
+
+# Visual Studio Code
+.vscode/*
+#!.vscode/settings.json
+#!.vscode/tasks.json
+#!.vscode/launch.json
+#!.vscode/extensions.json
+hb/bootloader/data/sdengine.bin
+hb/bootloader/data/sdengine_alt.bin
+hb/nitrofiles/load.bin
+hb/nitrofiles/loadInject.bin
+hb/nitrofiles/sdengine.bin
+hb/nitrofiles/sdengine_alt.bin
+retail/nitrofiles/cardengine_arm7*.bin
+retail/nitrofiles/cardengine_arm9*.bin
+retail/nitrofiles/cardenginei_arm7*.bin
+retail/nitrofiles/cardenginei_arm9*.bin
+retail/nitrofiles/asyncLoadSettings.pck
+retail/nitrofiles/preLoadSettings*.pck
+retail/nitrofiles/apfix.pck
+retail/nitrofiles/apfixPostCardRead.pck
+retail/nitrofiles/mobiclipOffsets.pck
+retail/nitrofiles/dsi2dsSavePatches.pck
+retail/nitrofiles_dec/cardengine_arm7*.bin
+retail/nitrofiles_dec/cardengine_arm9*.bin
+retail/nitrofiles_dec/cardenginei_arm7*.bin
+retail/nitrofiles_dec/cardenginei_arm9*.bin
+retail/nitrofiles_dec/load*.bin
+retail/nitrofiles_dec/loadi*.bin
+
+retail/arm9/include/version.h
+
+*.exe
+*.lz77
+!retail/nitrofiles/fonts/*.lz77
+!retail/nitrofiles/bootloader_images.lz77
+!retail/nitrofiles/dstwo.dldi
+!retail/nitrofiles/esrbOnlineNotice.lz77
+
+# Built by tools/ra_release.sh. The deliverable, and deliberately not in the tree: it is two
+# megabytes that change on every build, and the script prints its md5 and the commit it came from
+# so a ROM can be tied back to a revision without the ROM being stored beside it.
+nds-bootstrap-release.nds
+
+# Built by tools/wifiprobe (a diagnostic, not a deliverable)
+tools/wifiprobe/wifiprobe.nds
+tools/wifiprobe/arm7/build/
+tools/wifiprobe/arm9/build/
+tools/wifiprobe/arm7/wifiprobe.elf
+tools/wifiprobe/arm9/wifiprobe.elf

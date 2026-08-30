@@ -1,0 +1,21 @@
+OUTPUT_FORMAT("elf32-littlearm", "elf32-bigarm", "elf32-littlearm")
+OUTPUT_ARCH(arm)
+/*ENTRY(_start)*/
+
+MEMORY {
+
+	vram	: ORIGIN = 0, LENGTH = 512K
+}
+
+__vram_start	=	ORIGIN(vram);
+__vram_top	=	ORIGIN(vram)+ LENGTH(vram);
+
+SECTIONS
+{
+	.init	:
+	{
+		__text_start = . ;
+		KEEP (*(.init))
+		. = ALIGN(4);  /* REQUIRED. LD is flaky without it. */
+	} >vram = 0xff
+}

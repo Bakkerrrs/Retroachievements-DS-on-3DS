@@ -1,0 +1,87 @@
+# Definitions and watches, one per line. Copy to
+#   sd:/_nds/nds-bootstrap/ra_achievements.txt
+#
+# '#' comments and blank lines are ignored. Only the first four watches reach the
+# snapshot's results[] at +0x30.
+#
+#   an achievement:  RetroAchievements memaddr syntax, activated in the runtime
+#   a watch:         W:<address>:<size>[:<offset>...]     pointers are DS addresses
+#                    W24:<address>:<size>[:<offset>...]   pointers are 24-bit console
+#
+# Addresses are console addresses: RetroAchievements maps DS system RAM at 0, so 0x09f2f8
+# here is 0x0209f2f8 on the console.
+#
+# ---------------------------------------------------------------------------------------
+# SUPER MARIO 64 DS -- AND WHY THIS GAME
+#
+# Three rounds against Space Invaders Extreme 2 read live memory and wrong fields: the
+# canary never changed between the title screen and play, the "Current Stage" byte held
+# values outside its documented range, and no dump could be found whose hash matched the
+# set's supported files. A systematic offset between the notes' addressing and the
+# cartridge is not something more watches can fix.
+#
+# Super Mario 64 DS removes that variable at the source. Its notes open with: "This Real
+# Set has ONLY one ROM. It's EU ROM. All addresses are from EU ROM." One ROM means there
+# is exactly one right answer to "is this the dump the notes describe", and it is worth
+# confirming *before* playing -- a hash check costs a minute, another hardware session
+# costs an evening.
+#
+# WHAT MAKES THIS ROUND DECIDABLE
+#
+# The last canary could only report "changed" or "did not change". Screen ID reports a
+# specific documented byte: 0x37 is the Main Menu, 0x38 is File Select. A predicted value
+# is a far stronger test than a predicted change, because noise can produce a change and
+# cannot produce 0x37.
+#
+#   0x37 on the main menu     the addresses describe this dump; everything else follows
+#   anything else             wrong dump or wrong map, and no further watch will help
+# ---------------------------------------------------------------------------------------
+
+
+# results[0] -- THE CANARY. [8-Bit] Screen ID.
+# 0x37 Main Menu, 0x38 File Select, 0x16 Star Select, 0x15 Game Over.
+# This one byte decides the round before any level is loaded.
+W:8e43c:1
+
+# results[1] -- [8-Bit] Map ID. 0x01 Outside the Castle, 0x02 Inside the Castle,
+# 0x06 Bob-omb Battlefield. A second predicted value from an unrelated address: two
+# independent addresses agreeing is what rules out coincidence.
+W:9f2f8:1
+
+# results[2] -- Coins. Runtime state that moves while you play and needs no save file.
+# Read as four bytes; if the field is narrower than that the count is in the low bytes
+# and the rest is whatever sits next to it.
+W:9f358:4
+
+# results[3] -- the raw word at the character pointer, read rather than followed.
+# Its *value* is the evidence: a plausible 0x02xxxxxx in a level and zero on the menu is
+# what a real pointer looks like. Following it here would hide a null, which is the
+# mistake the 24-bit mask made last time and the reason this slot reads raw.
+W:9b450:4
+
+
+# ---------------------------------------------------------------------------------------
+# The definitions. Three, in increasing order of what they exercise.
+# ---------------------------------------------------------------------------------------
+
+# 1. Reached File Select. Fires within seconds of boot, before any play -- so if the
+#    addresses are right this is the first thing that unlocks, and it costs nothing to
+#    check. Delta memref: the state must have been something else last frame.
+#    'h38' and not '0x38': in memaddr an operand starting 0x is a *memory read*, so 0x38
+#    would compare Screen ID against the 16-bit word at address 0x38. Hex constants take
+#    an h prefix; bare digits are decimal.
+0xH08e43c=h38_d0xH08e43c!=h38
+
+# 2. Entered Bob-omb Battlefield. Deterministic, you control exactly when it happens,
+#    and it is the shape a real "visit this course" achievement has.
+0xH09f2f8=h06_d0xH09f2f8!=h06
+
+# 3. The pointer chain, guarded. 0xW is a 24-bit read of the character pointer and I: is
+#    AddAddress, so the second condition reads X at pointer+0x5C. The first condition
+#    exists because a null pointer plus an offset still lands inside main RAM and reads
+#    whatever happens to be there -- the guard is what makes a fire mean something.
+#    The computed address is not a memref, so rc_runtime_validate_addresses() never sees
+#    it and peek()'s own range check is the only thing standing between a stale pointer
+#    and a Data Abort inside the game's interrupt handler. That is the path this line is
+#    here to exercise; rcPeeks and rcPeeksRejected report on it.
+0xW09b450!=0_I:0xW09b450_0xX00005C!=0

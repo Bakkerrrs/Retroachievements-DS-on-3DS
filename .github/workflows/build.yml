@@ -1,0 +1,101 @@
+name: Build nds-bootstrap-ra
+
+on:
+  push:
+    branches: ["*"]
+    paths-ignore:
+      - 'README.md'
+  pull_request:
+    branches: ["*"]
+    paths-ignore:
+      - 'README.md'
+  release:
+    types: [created]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container: devkitpro/devkitarm:20241104
+    name: Build with Docker using devkitARM
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Install tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install p7zip-full gcc -y
+
+          sudo gcc lzss.c -o /usr/local/bin/lzss
+      - name: Setup environment
+        run: git config --global safe.directory '*'
+      # The reader's chain walker is pure address logic, so it can be checked here
+      # rather than by flashing a card. Runs before the build so a logic regression
+      # fails in seconds instead of after every cardengine variant has linked.
+      - name: Test the RA reader
+        run: ./tools/ra_reader_test.sh
+      - name: Build nightly
+        if: ${{ !startsWith(github.ref, 'refs/tags') }}
+        run: make package-nightly
+      - name: Build release
+        if: ${{ startsWith(github.ref, 'refs/tags') }}
+        run: make package-release
+      # How much room is left in each cardengine window that carries the reader.
+      # The linker scripts already fail the build if it runs out; this is so the
+      # margin is visible while it is still a margin, on the pinned toolchain rather
+      # than whatever a developer happens to have installed.
+      - name: Report cardengine space budget
+        run: ./tools/ra_snapshot_addr.sh
+      - name: Pack 7z nightly
+        if: ${{ !startsWith(github.ref, 'refs/tags') }}
+        run: |
+          printf "${{ github.sha }}\n" >> bin/nightly-bootstrap.ver
+          mv bin/ nds-bootstrap/
+          7z a nds-bootstrap.7z nds-bootstrap/
+
+          mkdir -p ~/artifacts
+          cp nds-bootstrap.7z ~/artifacts
+      - name: Pack 7z release
+        if: ${{ startsWith(github.ref, 'refs/tags') }}
+        run: |
+          printf "Release ${{ github.ref_name }}\n" >> bin/release-bootstrap.ver
+          cd bin
+          mkdir -p ~/artifacts
+
+          7z a nds-bootstrap.7z .
+          cp nds-bootstrap.7z ~/artifacts
+          rm nds-bootstrap.7z
+
+          7z a nds-bootstrap.zip .
+          cp nds-bootstrap.zip ~/artifacts
+      - name: Publish build to GH Actions
+        uses: actions/upload-artifact@v4
+        with:
+          path: ~/artifacts/*
+          name: build
+
+  # Only run this for non-PR jobs.
+  publish_build:
+    runs-on: ubuntu-latest
+    name: Publish build
+    if: ${{ success() && startsWith(github.ref, 'refs/tags') }}
+    needs: build
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: build
+          path: build
+      - name: Upload to ${{ github.repository }} release
+        run: |
+          ID=$(jq --raw-output '.release.id' $GITHUB_EVENT_PATH)
+
+          for file in ${{ github.workspace }}/build/*; do
+            AUTH_HEADER="Authorization: token ${{ secrets.GITHUB_TOKEN }}"
+            CONTENT_LENGTH="Content-Length: $(stat -c%s $file)"
+            CONTENT_TYPE="Content-Type: application/7z-x-compressed"
+            UPLOAD_URL="https://uploads.github.com/repos/${{ github.repository }}/releases/$ID/assets?name=$(basename $file)"
+
+            curl -XPOST -H "$AUTH_HEADER" -H "$CONTENT_LENGTH" -H "$CONTENT_TYPE" --upload-file "$file" "$UPLOAD_URL"
+          done

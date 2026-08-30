@@ -1,0 +1,6 @@
+[submodule "retail/cardenginei/arm9_ra/rcheevos"]
+	path = retail/cardenginei/arm9_ra/rcheevos
+	url = https://github.com/RetroAchievements/rcheevos.git
+[submodule "libs/dsiwifi"]
+	path = libs/dsiwifi
+	url = https://github.com/shinyquagsire23/dsiwifi.git
