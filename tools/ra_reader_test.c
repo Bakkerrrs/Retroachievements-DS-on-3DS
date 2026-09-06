@@ -928,7 +928,7 @@ int main(void) {
 	    shift every address in the hardware checklist in docs/retroachievements.md and nothing else
 	    would notice. It caught exactly that omission: the field went in and this line still said 0xCC.
 	*/
-	CHECK(sizeof(raSnapshot) == 0xE0);
+	CHECK(sizeof(raSnapshot) == 0x12C);
 	CHECK(__builtin_offsetof(raSnapshot, overlayRedrawn) == 0xCC);
 	CHECK(__builtin_offsetof(raSnapshot, overlaySavedInk) == 0xCE);
 	CHECK(__builtin_offsetof(raSnapshot, overlaySavedShadow) == 0xD0);
@@ -940,6 +940,17 @@ int main(void) {
 	*/
 	CHECK(__builtin_offsetof(raSnapshot, vramCnt) == 0xD4);
 	CHECK(__builtin_offsetof(raSnapshot, vramEverOn) == 0xDE);
+	/*
+	    The beacon. Pinned harder than the rest of this struct, because it is the only part of it
+	    published for **another project on another CPU** -- a shifted offset here is not a bad reading
+	    on our own screen, it is somebody else's software drawing garbage.
+	*/
+	CHECK(__builtin_offsetof(raSnapshot, notifySeq) == 0xE0);
+	CHECK(__builtin_offsetof(raSnapshot, notifyId) == 0xE4);
+	CHECK(__builtin_offsetof(raSnapshot, notifyHardcore) == 0xE8);
+	CHECK(__builtin_offsetof(raSnapshot, notifyLen) == 0xE9);
+	CHECK(__builtin_offsetof(raSnapshot, notifyTitle) == 0xEC);
+	CHECK(sizeof(((raSnapshot*)0)->notifyTitle) == 64);
 	CHECK(sizeof(((raSnapshot*)0)->vramCnt) == 9);
 	/* Nine banks needs nine bits, and the field has to hold them. */
 	CHECK((1u << 8) <= 0xFFFFu);

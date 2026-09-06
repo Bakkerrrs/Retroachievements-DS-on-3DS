@@ -580,6 +580,75 @@ static u16 unlockSent;      /* handed to the ARM7 and acknowledged */
 static u8  unlockNoChannel; /* the published shared address was not one of the two legal ones */
 static u8  unlockSynthetic; /* triggers refused for carrying a synthetic id */
 
+/*
+    Publish an unlock where the 3DS's ARM11 could read it. See raSnapshot.notifySeq for the protocol
+    and docs/twlbg-overlay-proposal.md for what is meant to consume it.
+
+    The order here is the synchronisation and is not an accident: payload first, cache cleaned, write
+    buffer drained, **sequence last**. A reader that sees a new sequence therefore has a complete
+    record behind it, with no handshake, no acknowledgement and nothing for either side to clear.
+
+    Cleaning the cache is the part that is easy to leave out and fatal to leave out. Every other field
+    in the snapshot is read by the in-game menu -- the same CPU, the same cache, nothing to do. These
+    bytes are for a different processor, and a write that is still sitting in this ARM9's data cache
+    is a write the other side cannot see. `c7, c10, 1` cleans a line by address and `c7, c10, 4`
+    drains the write buffer; the cache line is 32 bytes on this core.
+*/
+/* Set by the event handler, consumed after the frame. See ra_rc_frame_step(). */
+static u32         beaconId;
+static const char* beaconTitle;
+static u8          beaconPending;
+
+static void ra_beacon_publish(raSnapshot* snapshot, u32 id, const char* title, int hardcore) {
+	u8 n = 0;
+
+	if (!snapshot) {
+		return;
+	}
+
+	snapshot->notifyId       = id;
+	snapshot->notifyHardcore = (u8)(hardcore ? 1 : 0);
+	if (title) {
+		while (n < sizeof(snapshot->notifyTitle) && title[n]) {
+			snapshot->notifyTitle[n] = title[n];
+			n++;
+		}
+	}
+	/* Pad rather than terminate: the length is what says how much is real. */
+	{
+		u8 k = n;
+
+		while (k < sizeof(snapshot->notifyTitle)) {
+			snapshot->notifyTitle[k++] = 0;
+		}
+	}
+	snapshot->notifyLen = n;
+
+#ifdef __arm__
+	{
+		u32       addr = (u32)&snapshot->notifySeq & ~31u;
+		const u32 end  = ((u32)snapshot->notifyTitle + sizeof(snapshot->notifyTitle) + 31u) & ~31u;
+
+		for (; addr < end; addr += 32) {
+			__asm__ volatile("mcr p15, 0, %0, c7, c10, 1" :: "r"(addr));
+		}
+		__asm__ volatile("mcr p15, 0, %0, c7, c10, 4" :: "r"(0));
+	}
+#endif
+
+	/* Last, and only now. */
+	snapshot->notifySeq++;
+
+#ifdef __arm__
+	{
+		const u32 addr = (u32)&snapshot->notifySeq & ~31u;
+
+		__asm__ volatile("mcr p15, 0, %0, c7, c10, 1" :: "r"(addr));
+		__asm__ volatile("mcr p15, 0, %0, c7, c10, 4" :: "r"(0));
+	}
+#endif
+}
+
 static void ra_rc_queue_unlock(u32 id) {
 	if (id == 0) {
 		return;
@@ -834,6 +903,18 @@ static void ra_rc_event_handler(const rc_runtime_event_t* runtimeEvent) {
 			*/
 			textStrip = ra_text_render(RA_TEXT_HEADING,
 			                           (line != 0xFF) ? defTitles[line] : 0);
+			/*
+			    ...and noted for the beacon, from the same lookup. **Stashed, not published**: the
+			    file's own rule two hundred lines down is that a handover to memory the other CPU
+			    polls happens after the frame rather than in here, where rcheevos is mid-update. The
+			    beacon is exactly that kind of handover, so it follows the same rule.
+
+			    The title pointer is into the definitions block, which does not move for the life of
+			    the session, so holding it for a few hundred microseconds is safe.
+			*/
+			beaconId      = runtimeEvent->id;
+			beaconTitle   = (line != 0xFF) ? defTitles[line] : 0;
+			beaconPending = 1;
 		}
 	}
 }
@@ -1676,6 +1757,20 @@ static u8 ra_rc_frame_step(raSnapshot* snapshot) {
 	    frame, exactly as rc_runtime_do_frame() did.
 	*/
 	ra_rc_do_frame_slice(rcSlice, rcParts);
+
+	/*
+	    The beacon, for the same reason and in the same place as the handover below: this writes to
+	    memory another processor polls, and doing it here rather than inside the event handler keeps
+	    it out of rcheevos' mid-update. See raSnapshot.notifySeq.
+	*/
+	if (beaconPending) {
+		const raSessionBlock* const session =
+			(const raSessionBlock*)CARDENGINEI_ARM9_RA_SESSION_LOCATION;
+
+		ra_beacon_publish(snapshot, beaconId, beaconTitle,
+		                  session->magic == RA_SESSION_MAGIC && session->hardcore != 0);
+		beaconPending = 0;
+	}
 
 	/*
 	    After the frame, not inside the event handler. The handler runs deep inside rcheevos with the

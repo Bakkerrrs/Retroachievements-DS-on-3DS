@@ -938,7 +938,61 @@ typedef struct raSnapshot {
 	u8  vramCnt[9];          /* +0xD4  VRAMCNT_A..I */
 	u8  vramPad;             /* +0xDD  to align what follows */
 	u16 vramEverOn;          /* +0xDE  bit 0 = bank A ... bit 8 = bank I */
-} raSnapshot;            /*              0xE0 bytes */
+	/*
+	    ============================================================================================
+	    **The beacon: an unlock, published for a reader on the 3DS's other CPU.**
+	    ============================================================================================
+
+	    This is one half of a bridge whose other half does not exist yet, and it is built anyway
+	    because the half that is missing belongs to somebody else.
+
+	    A 3DS running a DS game boots TWL_FIRM, whose ARM11 side runs `TwlBg` -- the module that takes
+	    the DS picture and puts it on the 3DS's screens. Anything drawn *there* is drawn after the DS
+	    hardware is finished: no borrowed background layer, no sprite slot, no palette entry, no VRAM.
+	    It is the one place a notification can appear that cannot corrupt the running game, and it
+	    would work on every game rather than on the ones where a survey happens to find a free corner.
+
+	    The channel between the two CPUs already exists and is proven: **RTCom**, two free legacy RTC
+	    registers that both the ARM7 and the ARM11 can read and write, refreshed every frame. It is
+	    what gives DS games circle-pad input on a 3DS today. What has never been done by anyone is the
+	    drawing: every published TwlBg patch changes scaling, filtering or input, and the circle-pad
+	    project says in as many words that it does not touch the framebuffer.
+
+	    So this side publishes, and says exactly where and in what shape, so that asking the TWPatcher
+	    and RTCom authors "can you draw this?" is a concrete question with an address rather than an
+	    idea. See docs/twlbg-overlay-proposal.md.
+
+	    **The protocol is one counter and no handshake.**
+
+	      notifySeq    starts at 0 and is incremented once per unlock, forever. A reader keeps the
+	                   last value it saw and shows a notification when it changes. Nothing is ever
+	                   cleared and nothing is acknowledged, so a reader that starts late, restarts, or
+	                   misses a frame simply resynchronises on the next unlock instead of hanging on a
+	                   flag nobody will clear. Zero means nothing has fired this session.
+
+	      the payload  is written **before** the counter, always. A reader that sees a new sequence has
+	                   a complete record behind it. That ordering is the entire synchronisation.
+
+	    **Written through the cache, deliberately.** These bytes are useless to another processor while
+	    they sit in this one's data cache, so the range is cleaned and the write buffer drained before
+	    the sequence goes out -- see ra_beacon_publish(). Everything else in this snapshot is read by
+	    the in-game menu, which is the same CPU and needs no such thing; the beacon is the first field
+	    here written for somebody else.
+
+	    **Nothing new is allocated for it.** It rides in the snapshot rather than at a fixed address of
+	    its own, because taking a new address in the game's main RAM is precisely the class of risk
+	    this project spent a week removing. The cost is that a reader has to find the snapshot, whose
+	    address moves between builds -- so it scans for the `RA2S` magic once at startup. If the other
+	    side would rather have a fixed address, that is a decision to make with them rather than for
+	    them.
+	*/
+	u32  notifySeq;          /* +0xE0  incremented per unlock; 0 = none this session */
+	u32  notifyId;           /* +0xE4  the achievement's RetroAchievements id */
+	u8   notifyHardcore;     /* +0xE8  1 if earned in a hardcore session */
+	u8   notifyLen;          /* +0xE9  bytes of notifyTitle in use, 0 if the title was not found */
+	u16  notifyPad;          /* +0xEA */
+	char notifyTitle[64];    /* +0xEC  the achievement's own name, NUL-padded, not NUL-guaranteed */
+} raSnapshot;            /*              0x12C bytes */
 
 /*
     A note on what that pair settled, because it is the answer to four hardware runs and it lives here
