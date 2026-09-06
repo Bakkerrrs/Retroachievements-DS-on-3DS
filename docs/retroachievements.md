@@ -4943,6 +4943,53 @@ the server's own `AchievementsRemaining`, and filtered out of the next boot's bl
 of the loop still missing, and it is the part with no network in it at all: the cardengine writing an id
 into a file whose bytes are already allocated. Everything it needs to talk to has been measured.
 
+## In-game networking: measured on hardware, and closed for good
+
+**The console leaves the AP's association table within a minute of the game booting, sometimes within
+seconds.** That is the experiment below, finally run, and it settles the question the wrong way.
+
+It also refutes the prediction written under it. That prediction was death by **rekey**, at ten
+minutes to an hour, because the WPA2 supplicant is in software on an ARM7 that is no longer
+listening. Seconds is not a rekey. Whatever ends the association is not the group-key timer, so the
+reframe this section was built on -- *"the shipped teardown is already the non-destructive one, so
+bring-up is the only expensive part and it has already happened"* -- is **false in practice whatever
+the teardown code says**.
+
+The likely reason is one this section never considered: masking five interrupts is not the only thing
+that happens between the ladder and the game. **The launcher's ARM7 binary is replaced by the
+game's.** Whatever that code does on the way up -- power management over I2C, resetting the SDIO
+controller, switching off peripherals it does not intend to use -- happens to a chip we were assuming
+nobody would touch. The teardown being gentle is beside the point if the next occupant is not.
+
+### What that costs
+
+Keeping a link alive now needs both halves, not one: preventing whatever kills it in the first
+seconds, **and** a resident stack to hold the association afterwards -- responding to keepalives,
+processing EAPOL, surviving the rekey that was never even reached. That is dsiwifi resident, which is
+the 104,148 bytes against 12,636 free that this question started from.
+
+So the door is closed on measurement rather than on argument, and the two features behind it go with
+it:
+
+- **Rich presence** needs a live outbound path every couple of minutes. Its *storage* question was
+  answered — fit-or-drop, measured across three games — but that was always the second obstacle.
+  The first one is not passable.
+- **Submitting an unlock the moment it is earned** needs the same path, for the same reason the queue
+  file exists at all.
+
+The queue remains the answer: an unlock is written when the game is quit and submitted by the next
+boot's ladder, which takes about ten seconds. "As soon as you finish playing" is what this
+architecture can offer, and it now does that without freezing anything.
+
+### The ARM11 does not rescue it either
+
+Asked directly, and worth writing down because the ARM11 *did* turn out to be available for other
+things. TWL_FIRM's ARM11 side is a TWL bootloader and `TwlBg`, and `TwlBg` handles display and sound.
+There is no network module in it; every NWM reference belongs to NATIVE_FIRM. Networking from there
+means porting an SDIO driver, WMI, a WPA2 supplicant and TCP into a patched `TwlBg` — and then
+sharing one SDIO controller with a DS side that is actively driving it, which is precisely the
+two-masters bug that took this project a day to remove from the SD card.
+
 ## In-game networking, reopened and then closed by measurement
 
 Open question #1 has always been settled for the launcher and open for the game, and the reason given
