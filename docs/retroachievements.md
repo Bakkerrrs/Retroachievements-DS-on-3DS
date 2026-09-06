@@ -8378,6 +8378,39 @@ that is happening anyway.
 Asked directly, after four rounds on one shooter: is this approach sustainable, and can the 3DS's own
 ARM11 be used instead?
 
+> **Corrected, later, and it was wrong twice.** "The ARM11 is not running" is not true, and this
+> document asserted it in two places on the strength of nothing but repetition. A 3DS running a DS
+> game boots **TWL_FIRM**, and TWL_FIRM includes **`TwlBg`, an ARM11 system module that runs for the
+> whole session** -- it is what upscales and filters the DS output onto the 3DS's own screens. Luma3DS
+> loads a replaceable `TwlBg.cxi` from `/luma/sysmodules`, which is how DS-mode screen filters and
+> widescreen exist at all.
+>
+> There is also an established channel between the two sides: **RTCom**, which uses the 3DS's RTC to
+> let the ARM7 and the ARM11 talk *while TWL_FIRM is running*. It is not theoretical -- it already
+> powers circle-pad analog input in upstream nds-bootstrap, DS-mode widescreen, and gyro in
+> GBARunner2. This fork does not speak it: `rtcom`, `circlepad` and `twlbg` appear nowhere in the
+> tree.
+>
+> What that changes, and what it does not:
+>
+> **The overlay.** This is the real find. `TwlBg` already holds the composited DS picture on its way
+> to the 3DS's screens, which makes a patched `TwlBg` the exact equivalent of the PSP framebuffer
+> trick this fork went looking for and could not find on the DS side: draw the notification *after*
+> the DS hardware is done, touching no layer, no sprite, no palette and no VRAM. It would work on
+> every game unconditionally, including the ones where the nine VRAM banks leave nowhere safe to
+> draw. It is the only approach discussed here that cannot corrupt a game, by construction.
+>
+> **The LED.** The 3DS's notification LED is MCU-controlled and reachable from the 3DS side, which is
+> the half of the console the ARM11 lives on. Plausible; unverified here.
+>
+> **The radio.** Not helped. `TwlBg` has no network stack, and the WiFi chip is being driven by the
+> DS side throughout. This one does not get easier.
+>
+> The cost is a change of shape rather than a change of code: it means shipping or contributing to a
+> patched `TwlBg`, and users needing Luma3DS with external FIRM loading enabled. That is a dependency
+> this fork does not have today. Recorded as the correction it is; the paragraph below is left
+> standing as what was believed.
+
 **The ARM11 is not available, and this project already wrote that down for the radio:** a 3DS running
 a DS game is in DS/TWL mode, its operating system and its ARM11 are not running, and in that state
 the console is a DSi for our purposes. There is no 3DS-side layer to draw on from here, no channel to
