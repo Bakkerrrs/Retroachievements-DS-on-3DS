@@ -734,7 +734,24 @@ static void raAchievementsPage(void) {
 		    Three cells each, because RA_VIEWER_MAX_ENTRIES is 128 and two cells silently showed the
 		    low two digits of anything larger -- see raPrintNum().
 		*/
-		raPrintNum(1, 1, 3, v->earned, FONT_LIME);
+		/*
+		    **The count is earned plus queued**, and that is the fix for a line that read
+		    `0 of 54 earned  2 sync` after unlocking two achievements. Zero is not what a player who
+		    just earned two of them should be looking at.
+
+		    An achievement that has fired but not been sent **is earned**. It is the same thing the
+		    list under this line marks with a star, and it is what the percentage at the right-hand
+		    end has always counted -- so the big number was the one field on this page disagreeing
+		    with every other. What `sync` reports is not a different kind of achievement, it is the
+		    server's acknowledgement still being owed.
+
+		    Safe to add because the two are **disjoint by construction**, not by luck: ra_viewer_add()
+		    only sets RA_VIEWER_QUEUED on an entry that does not already carry RA_VIEWER_EARNED, so
+		    an unlock is in exactly one of the two counts and crosses over on the boot that submits
+		    it. Widened to u32 for the same reason the percentage is: the counts come from a block
+		    another binary wrote.
+		*/
+		raPrintNum(1, 1, 3, (u32)v->earned + (u32)v->queued, FONT_LIME);
 		print(5, 1, (unsigned char*)"of", FONT_LIGHT_GRAY, false);
 		raPrintNum(8, 1, 3, v->count, FONT_WHITE);
 		print(12, 1, (unsigned char*)"earned", FONT_LIGHT_GRAY, false);
@@ -754,7 +771,7 @@ static void raAchievementsPage(void) {
 		    Clamped at 100 rather than trusted: the counts come from a block another binary wrote.
 		*/
 		{
-			const u32 done  = (u32)v->earned + (u32)v->queued;
+			const u32 done    = (u32)v->earned + (u32)v->queued;   /* the same sum as the count above */
 			u32       percent = v->count ? (done * 100) / v->count : 0;
 
 			if (percent > 100) {

@@ -8300,6 +8300,72 @@ already holds and throws away:
 The snapshot goes to 0xD4. This is the same instrument that killed the extended-palette theory and
 found the borrowed-block collision, pointed at the two things left.
 
+## Confirmed: the freeze was the card, and moving the write off the game's frame ended it
+
+`queue=1`, Ketsui, the same boss that had ended six sessions. **No freeze, and the unlocks were
+written.** The last bug in this chain is closed.
+
+The step that settled it was switching the overlay off *entirely* — no sprites, no borrowed layer,
+not one write to the game's VRAM — and watching it freeze anyway. That exonerated the overlay, which
+had absorbed six rounds of work, and left exactly one thing between "plays" and "hangs": the ARM7
+opening the SD card from inside a VBlank handler, with IME off, while a bullet-hell streamed a scene
+transition.
+
+**The fix is a removal, not a mitigation.** Three separate diagnoses of *which part* of that
+transaction was fatal were wrong — the overlay, a suspended card read, the RTC read — and each cost a
+boss fight to test. So the transaction was moved out of the way instead of being bisected further. On
+the frame an achievement fires the ARM7 now does arithmetic and nothing else. The card is opened
+where the game is not using it: `inGameMenu()` (paused under `saveMutex`, and already using the card
+for screenshots), `returnToLoader()` and `forceGameReboot()`.
+
+What it costs is stated in the config file and worth repeating: an unlock that has not been drained
+does not survive the console being switched off mid-session. Quitting normally drains it.
+
+### And what it cost to fit
+
+TWL-SDK keeps the old in-gameplay append. Deferring is 136 bytes of text and 28 of `.bss`, measured;
+that binary links into 33K with **forty-four spare**, and a three-slot buffer with the service
+inlined back into the handler still landed a hundred over. Every game this was built to rescue is
+NTR — Ketsui, Contra 4, Chrono Trigger all load `cardenginei_arm7`, which has 11K free. Recorded
+rather than hidden: those titles are not fixed, they are unchanged.
+
+## `0 of 54 earned  2 sync` — the one field on the page that disagreed with the rest
+
+Reported after two achievements unlocked cleanly. Zero is not what a player who just earned two
+should be reading.
+
+An achievement that has fired but not been sent **is earned**. The list under that line marks it with
+a star, and the percentage at the right-hand end had counted it since the day it was added — so the
+big number was the only field on the page saying otherwise. `sync` does not report a different kind
+of achievement; it reports an acknowledgement still owed.
+
+Fixed by printing `earned + queued`, which is the same sum the percentage already used.
+
+### Checking the invariant instead of assuming it found a real bug
+
+That sum is only safe if the two counts are disjoint, so the two places that raise
+`RA_VIEWER_QUEUED` were read rather than trusted. The one that runs at build time guards correctly on
+`RA_VIEWER_EARNED`. **The one that runs when an achievement fires did not:**
+
+```c
+if (!(v->entry[k].flags & RA_VIEWER_QUEUED)) {    /* EARNED never tested */
+    v->entry[k].flags |= RA_VIEWER_QUEUED;
+    v->queued++;
+}
+```
+
+So an achievement the server had already reported as earned, firing again this session, came out
+carrying **both** flags and bumping `queued` for something already inside `earned`. With the header
+now adding the two, that entry would be counted twice and could read past the size of the set.
+
+And it is not hypothetical. A cached set carries filtering as old as the cache, so `sync=0` — or an
+unlock deleted on the website, which is exactly what was done to re-test this game — leaves an earned
+achievement active in the staged set.
+
+Pinned in the host suite by firing an already-earned id and asserting `queued` does not move, then
+walking every entry for the both-flags state. Verified the way a pin has to be: with the fix reverted
+the suite reports three failures.
+
 ### One observation worth more than the next commit
 
 When it freezes, **does the in-game menu still open?** L+R+Down+B. If it does, the ARM7 is alive and
@@ -9145,6 +9211,12 @@ and a player who uses the in-game menu heavily will meet it sooner here than on 
       stamped with the session's start, which is a real regression against exact times and still far
       better than the reporting boot's date. **NOT confirmed** — see the retraction below. The boss
       kill itself is survived; the game still freezes at the end of the boss.
+- [x] **The queue write no longer freezes the game** — **confirmed on hardware**. The overlay was
+      exonerated by switching it off entirely and watching Ketsui freeze anyway; what was left was
+      the ARM7 opening the SD card from a VBlank handler mid-transition. Unlocks are now held in
+      memory and written when the in-game menu opens or the game is quit. `queue=1` on the boss that
+      had ended six sessions: no freeze, unlocks written. NTR titles only — deferring did not fit
+      the TWL-SDK ARM7's forty-four spare bytes.
 - [ ] **Hardcore.** Blocked on nothing in this tree any more, and now measured rather
       than inferred: `h=1` from this client returns `Success:true` and is filed as a
       **softcore** unlock — hardcore score unchanged, `HardcoreUnlocks` empty,

@@ -640,7 +640,23 @@ static void ra_rc_queue_unlock(u32 id) {
 
 			for (k = 0; k < v->count && k < RA_VIEWER_MAX_ENTRIES; k++) {
 				if (v->entry[k].id == id) {
-					if (!(v->entry[k].flags & RA_VIEWER_QUEUED)) {
+					/*
+					    **EARNED as well as QUEUED**, and the missing half of that test was a real
+					    bug: this only checked QUEUED, so an achievement the server had already
+					    reported as earned, firing again this session, came out carrying *both*
+					    flags and bumping `queued` for something already inside `earned`.
+
+					    That can happen -- a cached set carries its own filtering, as old as the
+					    cache, so `sync=0` or a unlock deleted server-side leaves an earned
+					    achievement active -- and the menu's header now adds the two counts to
+					    print one number. Both flags on one entry would make it count twice and
+					    could put it past the size of the set.
+
+					    An entry that is already EARNED needs nothing from this: it is shown as
+					    earned, it is in the total, and the unlock still goes down the ring to the
+					    queue file exactly as before. Only the display is left alone.
+					*/
+					if (!(v->entry[k].flags & (RA_VIEWER_EARNED | RA_VIEWER_QUEUED))) {
 						v->entry[k].flags |= RA_VIEWER_QUEUED;
 						v->queued++;
 					}

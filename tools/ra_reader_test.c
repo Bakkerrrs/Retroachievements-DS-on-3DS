@@ -1614,6 +1614,32 @@ int main(void) {
 		/* The earned one keeps its id, its flag, and all three fields. */
 		CHECK(v->entry[0].id == 302329);
 		CHECK(v->entry[0].flags == RA_VIEWER_EARNED);
+
+		/*
+		    **An entry cannot carry EARNED and QUEUED at once**, and the menu's header now depends on
+		    it: that page prints earned + queued as a single count, so an entry in both would be
+		    counted twice and could read past the size of the set.
+
+		    Firing an achievement the server has already reported as earned is not a hypothetical --
+		    a cached set carries filtering as old as the cache, so `sync=0`, or an unlock deleted on
+		    the website, leaves one active. The runtime marking used to test only QUEUED and set both.
+		*/
+		{
+			const u8 queuedBefore = v->queued;
+
+			ra_rc_queue_unlock(302329);   /* entry[0], already EARNED */
+			CHECK(v->entry[0].flags == RA_VIEWER_EARNED);
+			CHECK(v->queued == queuedBefore);
+		}
+		/* ...and it holds for every entry, not just the one just poked. */
+		{
+			u16 k;
+
+			for (k = 0; k < v->count; k++) {
+				CHECK((v->entry[k].flags & (RA_VIEWER_EARNED | RA_VIEWER_QUEUED))
+				      != (RA_VIEWER_EARNED | RA_VIEWER_QUEUED));
+			}
+		}
 		CHECK(strcmp(text + v->entry[0].titleOff, "Welcome to the Jungle") == 0);
 		CHECK(strcmp(text + v->entry[0].pointsOff, "3") == 0);
 		CHECK(strcmp(text + v->entry[0].descOff, "Clear Stage 1") == 0);
