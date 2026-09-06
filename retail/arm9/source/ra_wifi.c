@@ -2350,7 +2350,7 @@ static u8 raWifiHardcoreRefused(const raConfig* cfg, bool cheatsOn) {
     The magic goes in last, for the reason the other three blocks give: the staging region is
     uninitialised, conf_sd.cpp cleared this word on its way past, and the bootloader trusts it.
 */
-static void raWifiStageSession(int hardcore, u8 refusal, int overlay, u8 queue) {
+static void raWifiStageSession(int hardcore, u8 refusal, int overlay, u8 queue, u8 level) {
 	raSessionBlock* const block = (raSessionBlock*)CARDENGINEI_ARM9_RA_SESSION_BUFFERED_LOCATION;
 
 	block->hardcore = hardcore ? 1 : 0;
@@ -2361,8 +2361,19 @@ static void raWifiStageSession(int hardcore, u8 refusal, int overlay, u8 queue) 
 
 	raWifiLog("in-game menu     RAM editing %s\n",
 	          hardcore ? "\x1b[32mlocked -- hardcore\x1b[37m" : "unchanged -- softcore");
-	raWifiLog("on-screen popup  %s\n",
-	          overlay ? "on" : "\x1b[33moff (overlay=0)\x1b[37m");
+	/*
+	    Says *why* it is off, because "off" alone sends a player to read source. Since the popup
+	    became opt-in per game, not-listed is the ordinary case rather than an error -- see
+	    RA_OVERLAY_LISTED.
+	*/
+	if (overlay) {
+		raWifiLog("on-screen popup  on%s\n",
+		          level >= RA_OVERLAY_ALWAYS ? " (overlay=2, every game)" : " (this game is listed)");
+	} else if (level == RA_OVERLAY_OFF) {
+		raWifiLog("on-screen popup  \x1b[33moff (overlay=0)\x1b[37m\n");
+	} else {
+		raWifiLog("on-screen popup  \x1b[33moff -- add this GameID to overlay_games to enable\x1b[37m\n");
+	}
 	/*
 	    A ladder rather than a switch now -- see RA_SHARED_UNLOCK_LEVEL. Every step below `full` is a
 	    diagnostic and says so on the line, because a player who left one set would otherwise lose
@@ -2520,7 +2531,17 @@ void raWifiProbe(bool sdFound, const char* ndsPath, bool cheatsOn) {
 	    unknown one, and the menu should be told that rather than left to infer it from silence.
 	    Above the exits because the exits are the common case: see raWifiStageSession().
 	*/
-	raWifiStageSession(config.hardcore, refusal, config.overlay, config.queue);
+	/*
+	    The popup's decision is resolved **here**, into the single bit the session block already
+	    carries, so no game-side binary changes and the tight ones spend nothing. This side is the one
+	    that knows the GameID and has room to walk a list. See RA_OVERLAY_LISTED.
+
+	    verdict.gameId is zero when the ladder did not reach stage 11, or when the server did not
+	    recognise the ROM -- and zero is on no list, so an unidentified game does not draw.
+	*/
+	raWifiStageSession(config.hardcore, refusal,
+	                   raOverlayAllowed(config.overlay, config.overlayGames, verdict.gameId),
+	                   config.queue, config.overlay);
 
 	/*
 	    `sync=0`: stop here, before a single register of the radio is touched.

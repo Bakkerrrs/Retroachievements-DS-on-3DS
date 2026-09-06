@@ -112,6 +112,48 @@ static void test_rom_hash(void) {
 	int tested = 0;
 	int i;
 
+	printf("\nthe popup is opt-in per game, and matching is whole-number\n");
+	{
+		const char* list = "16710,3405";
+
+		/* The ladder's ends. */
+		CHECK(raOverlayAllowed(RA_OVERLAY_OFF,    list, 16710) == 0);
+		CHECK(raOverlayAllowed(RA_OVERLAY_ALWAYS, list, 16710) == 1);
+		/* ...and ALWAYS does not consult the list at all. */
+		CHECK(raOverlayAllowed(RA_OVERLAY_ALWAYS, "",   99999) == 1);
+		CHECK(raOverlayAllowed(RA_OVERLAY_ALWAYS, 0,    0)     == 1);
+
+		/* The default rung: listed draws, unlisted does not. */
+		CHECK(raOverlayAllowed(RA_OVERLAY_LISTED, list, 16710) == 1);
+		CHECK(raOverlayAllowed(RA_OVERLAY_LISTED, list, 3405)  == 1);
+		CHECK(raOverlayAllowed(RA_OVERLAY_LISTED, list, 9999)  == 0);
+
+		/*
+		    Whole-number, which is the reason this is a parser and not strstr(): a prefix or a suffix
+		    of a listed id must not enable a different game.
+		*/
+		CHECK(raOverlayAllowed(RA_OVERLAY_LISTED, list, 1671)   == 0);
+		CHECK(raOverlayAllowed(RA_OVERLAY_LISTED, list, 6710)   == 0);
+		CHECK(raOverlayAllowed(RA_OVERLAY_LISTED, list, 167100) == 0);
+
+		/* Any non-digit separates, so spacing cannot silently drop an entry. */
+		CHECK(raOverlayAllowed(RA_OVERLAY_LISTED, "16710 3405",  3405) == 1);
+		CHECK(raOverlayAllowed(RA_OVERLAY_LISTED, "16710, 3405", 3405) == 1);
+		CHECK(raOverlayAllowed(RA_OVERLAY_LISTED, "  16710  ",  16710) == 1);
+		/* The last entry counts even with no trailing separator. */
+		CHECK(raOverlayAllowed(RA_OVERLAY_LISTED, "1,2,3405",   3405) == 1);
+
+		/* An empty or absent list draws on nothing. */
+		CHECK(raOverlayAllowed(RA_OVERLAY_LISTED, "",  16710) == 0);
+		CHECK(raOverlayAllowed(RA_OVERLAY_LISTED, 0,   16710) == 0);
+		/* A ROM the server does not know has no id to be listed under. */
+		CHECK(raOverlayAllowed(RA_OVERLAY_LISTED, list, 0) == 0);
+		CHECK(raOverlayAllowed(RA_OVERLAY_LISTED, "0",  0) == 0);
+
+		/* A number too long for a u32 saturates rather than wrapping onto a real id. */
+		CHECK(raOverlayAllowed(RA_OVERLAY_LISTED, "99999999999999", 16710) == 0);
+	}
+
 	printf("\nthe ROM hash agrees with rcheevos' own, on real .nds files\n");
 
 	for (i = 0; roms[i]; i++) {

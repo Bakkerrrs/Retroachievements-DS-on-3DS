@@ -113,6 +113,12 @@
     session -- and it is **lost** at power off, because the file is the only thing that survives a
     session. That is the cost, and it is why this defaults to 1.
 */
+/*
+    The allow-list the key above consults at level 1, by RetroAchievements GameID. See
+    RA_OVERLAY_LISTED for why the popup is opt-in per game now.
+*/
+#define RA_CFG_OVERLAY_GAMES "overlay_games"
+
 #define RA_CFG_QUEUE     "queue"
 
 /*
@@ -179,6 +185,51 @@ static u8 raCfgLevel(const char* value, u8 max, u8 dflt) {
 	return (u8)(value[0] - '0');
 }
 
+/*
+    Whether the popup may draw this session. See RA_OVERLAY_LISTED for why the default is "no".
+
+    Whole-number matching, deliberately: a substring search would let `1671` in the list turn the
+    popup on for game 16710. Any non-digit separates, so `16710,3405`, `16710 3405` and
+    `16710, 3405` all work and a stray space cannot silently drop an entry.
+
+    Overflow saturates rather than wraps. A number longer than a u32 can hold is a typo, and a
+    saturated value simply fails to match every real GameID -- which is the safe direction here,
+    because the failure is "no popup" rather than "popup on the wrong game".
+*/
+int raOverlayAllowed(u8 level, const char* list, u32 gameId) {
+	u32 value = 0;
+	int haveDigits = 0;
+
+	if (level == RA_OVERLAY_OFF) {
+		return 0;
+	}
+	if (level >= RA_OVERLAY_ALWAYS) {
+		return 1;
+	}
+	/* A ROM the server does not know has no id to be listed under. */
+	if (gameId == 0 || list == 0) {
+		return 0;
+	}
+
+	for (;; list++) {
+		if (*list >= '0' && *list <= '9') {
+			value = (value <= (0xFFFFFFFFu - 9) / 10)
+			        ? (value * 10 + (u32)(*list - '0'))
+			        : 0xFFFFFFFFu;
+			haveDigits = 1;
+			continue;
+		}
+		if (haveDigits && value == gameId) {
+			return 1;
+		}
+		if (*list == 0) {
+			return 0;
+		}
+		value = 0;
+		haveDigits = 0;
+	}
+}
+
 static bool raCfgKnownUnused(const char* key) {
 	int i;
 
@@ -201,7 +252,8 @@ bool raConfigRead(const char* path, raConfig* cfg) {
 	*/
 	cfg->submit  = 1;
 	cfg->sync    = 1;
-	cfg->overlay = 1;
+	cfg->overlay = RA_OVERLAY_LISTED;
+	cfg->overlayGames[0] = 0;
 	cfg->queue   = 1;
 	/*
 	    verboseLog is left at the memset's zero deliberately, and it is the one default in here that
@@ -249,7 +301,9 @@ bool raConfigRead(const char* path, raConfig* cfg) {
 		} else if (strcmp(key, RA_CFG_VERBOSE) == 0) {
 			cfg->verboseLog = raCfgFlag(value);
 		} else if (strcmp(key, RA_CFG_OVERLAY) == 0) {
-			cfg->overlay = raCfgFlag(value);
+			cfg->overlay = raCfgLevel(value, RA_OVERLAY_MAX, RA_OVERLAY_LISTED);
+		} else if (strcmp(key, RA_CFG_OVERLAY_GAMES) == 0) {
+			raCfgCopy(cfg->overlayGames, sizeof(cfg->overlayGames), value);
 		} else if (strcmp(key, RA_CFG_QUEUE) == 0) {
 			cfg->queue = raCfgLevel(value, RA_QUEUE_LEVEL_MAX, RA_QUEUE_LEVEL_FULL);
 		} else if (raCfgKnownUnused(key)) {

@@ -659,6 +659,56 @@ const char* raWifiVerdictArrival(const raWifiVerdict* v);
 #define RA_CFG_PATH      "sd:/_nds/nds-bootstrap/ra.cfg"
 #define RA_CFG_PATH_FAT  "fat:/_nds/nds-bootstrap/ra.cfg"
 
+/*
+    **Whether the on-screen popup may draw at all, and the default is now "no".**
+
+    This inverts what this fork did for its whole life, and it is a decision taken on evidence rather
+    than on taste. The overlay is the one part of this client that negotiates with a running game for
+    its hardware: it works out which background layer, character block, sprite slot or object VRAM
+    the game is not using, and borrows it. That judgement is an *inference* over registers the game
+    rewrites every frame, and it has now been wrong on hardware in six separate rounds.
+
+    What settled it is a reading rather than an argument. On Ketsui the nine VRAM banks come back:
+
+        A B  3D textures    C  sub BG    D  sub OBJ    E  texture palette
+        F G  LCDC           H I  disabled
+
+    The two free banks are the two that can only be mapped where C and D already are -- bank I's only
+    sub-engine homes are 0x06208000 and 0x06600000, both inside banks C and D. And with all four of
+    A-D spoken for, the main engine's capture route is out as well. **On that game there is nowhere
+    to draw that can be shown to be safe.** No amount of further surveying changes that, because the
+    premise the design rests on -- that a free corner can always be found -- is simply false there.
+
+    So the trade is inverted. A notification that does not appear is a missing feature; a game whose
+    graphics are corrupted is a bug, and it is the worse of the two. The popup now draws only where a
+    person has watched it and said it was fine:
+
+      0  never
+      1  only for games listed in `overlay_games`   <- the default
+      2  always, on any game
+
+    Level 2 is the old behaviour, kept and reachable, because a player who wants it on an unlisted
+    game should be able to choose that for themselves. It is opting into a known risk rather than
+    inheriting one.
+*/
+#define RA_OVERLAY_OFF    0
+#define RA_OVERLAY_LISTED 1
+#define RA_OVERLAY_ALWAYS 2
+#define RA_OVERLAY_MAX    2
+
+/*
+    Resolved in the launcher, not the cardengine, and staged as the single bit raSessionBlock.overlay
+    already carries -- so the game-side binaries do not change at all and the tight ones spend nothing.
+    The launcher is the side that knows the GameID and has the room to parse a list.
+
+    `gameId` is the server's, and zero -- a ROM RetroAchievements does not recognise -- is never on a
+    list, so it never draws at RA_OVERLAY_LISTED.
+
+    Pure, and tested in tools/ra_launcher_test.c: matching has to be whole-number, or `1671` in the
+    list would enable `16710`.
+*/
+int raOverlayAllowed(u8 level, const char* list, u32 gameId);
+
 typedef struct raConfig {
 	char username[33];   /* RA usernames are short; 32 is well past any real one */
 	char password[65];
@@ -695,6 +745,17 @@ typedef struct raConfig {
 	    see RA_CFG_OVERLAY. Defaults to 1.
 	*/
 	u8   overlay;
+	/*
+	    Which games the popup is allowed on, by RetroAchievements GameID, comma separated.
+	    `overlay_games=16710,3405` and so on. Only consulted at RA_OVERLAY_LISTED.
+
+	    **By GameID rather than by the ROM's four-character code**, and that is the canonical choice
+	    rather than the convenient one: the GameID is what RetroAchievements itself keys on, it is
+	    already printed in the launcher log for every boot, and it is the number in the URL of the
+	    game's page. A four-character code is per-region and per-revision; the same game would need
+	    several entries and a player would have to find them.
+	*/
+	char overlayGames[64];
 	/*
 	    `queue=0` in ra.cfg: detect and show unlocks, and never write one to the card. A diagnostic
 	    for a game that freezes on the frame an achievement fires -- see RA_CFG_QUEUE. Defaults to 1,
