@@ -80,6 +80,25 @@ is all of it.
   drains its write buffer in between. A reader that sees a new sequence has a complete record behind
   it. That ordering is the entire synchronisation.
 
+### It is not a promise — here is a console doing it
+
+Read out of a 3DS with the RAM viewer, at `snapshot + 0xE0`, immediately after unlocking
+*Bomb Quartet* in *Ketsui Death Label*. Bytes in address order:
+
+```
++0xE0   01 00 00 00                           notifySeq       = 1
++0xE4   DE 98 04 00                           notifyId        = 0x000498DE = 301278
++0xE8   01                                    notifyHardcore  = 1
++0xE9   0C                                    notifyLen       = 12
++0xEA   00 00                                 (padding)
++0xEC   42 6F 6D 62 20 51 75 61 72 74 65 74   "Bomb Quartet"
++0xF8   00 00 ...                             NUL-padded to 64
+```
+
+`301278` is that achievement's real id on RetroAchievements, and `0x0C` is the exact length of its
+name. Use this as a test vector: a reader that renders `Bomb Quartet` from those bytes has the
+interface right.
+
 ### Finding it
 
 The snapshot lives in the cardengine's own `.bss`, so its address depends on which cardengine variant

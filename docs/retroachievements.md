@@ -9297,6 +9297,11 @@ and a player who uses the in-game menu heavily will meet it sooner here than on 
       memory and written when the in-game menu opens or the game is quit. `queue=1` on the boss that
       had ended six sessions: no freeze, unlocks written. NTR titles only — deferring did not fit
       the TWL-SDK ARM7's forty-four spare bytes.
+- [x] **An unlock is published for a reader on the 3DS's other CPU** — **confirmed on hardware**.
+      Read back at `snapshot + 0xE0` after unlocking *Bomb Quartet*: sequence 1, id `0x000498DE`
+      (301278), hardcore 1, length 12, and `Bomb Quartet` legible in the ASCII column. The half that
+      draws it belongs to a patched `TwlBg` and does not exist yet; `docs/twlbg-overlay-proposal.md`
+      is the ask, and now carries that dump as a test vector.
 - [ ] **Hardcore.** Blocked on nothing in this tree any more, and now measured rather
       than inferred: `h=1` from this client returns `Success:true` and is filed as a
       **softcore** unlock — hardcore score unchanged, `HardcoreUnlocks` empty,
