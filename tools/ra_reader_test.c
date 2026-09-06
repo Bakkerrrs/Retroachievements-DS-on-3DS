@@ -928,11 +928,21 @@ int main(void) {
 	    shift every address in the hardware checklist in docs/retroachievements.md and nothing else
 	    would notice. It caught exactly that omission: the field went in and this line still said 0xCC.
 	*/
-	CHECK(sizeof(raSnapshot) == 0xD4);
+	CHECK(sizeof(raSnapshot) == 0xE0);
 	CHECK(__builtin_offsetof(raSnapshot, overlayRedrawn) == 0xCC);
 	CHECK(__builtin_offsetof(raSnapshot, overlaySavedInk) == 0xCE);
 	CHECK(__builtin_offsetof(raSnapshot, overlaySavedShadow) == 0xD0);
 	CHECK(__builtin_offsetof(raSnapshot, overlayBgCnt) == 0xD2);
+	/*
+	    The nine bank registers, and the accumulated mask beside them. Pinned because the whole point
+	    is reading them off a photograph at a known address: a shifted offset makes the reading a lie
+	    rather than an error.
+	*/
+	CHECK(__builtin_offsetof(raSnapshot, vramCnt) == 0xD4);
+	CHECK(__builtin_offsetof(raSnapshot, vramEverOn) == 0xDE);
+	CHECK(sizeof(((raSnapshot*)0)->vramCnt) == 9);
+	/* Nine banks needs nine bits, and the field has to hold them. */
+	CHECK((1u << 8) <= 0xFFFFu);
 		CHECK(__builtin_offsetof(raSnapshot, defsMagic) == 0xC4);
 		CHECK(__builtin_offsetof(raSnapshot, defsLength) == 0xC8);
 

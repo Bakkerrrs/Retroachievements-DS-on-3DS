@@ -913,7 +913,32 @@ typedef struct raSnapshot {
 	u16 overlaySavedInk;     /* +0xCE */
 	u16 overlaySavedShadow;  /* +0xD0 */
 	u16 overlayBgCnt;        /* +0xD2 */
-} raSnapshot;            /*              0xD4 bytes */
+	/*
+	    **The nine VRAM bank registers**, which this fork has never once read, and the single fact
+	    that would have shortened four rounds of overlay work.
+
+	    Every "is this block free?" the overlay has asked was an inference over registers the game
+	    rewrites every frame: read the BGCNTs, work out which 16K blocks they name, call the rest
+	    spare. Whether the sub engine can even *see* a given bank is not an inference -- it is bit 7 of
+	    nine bytes of I/O space, and a bank with that bit clear is one the game **cannot address at
+	    all**. Nothing can overwrite what we put there, and the game loses nothing by our taking it.
+
+	    Bank I is the one to watch: 16K, the smallest, and it maps to sub-engine object VRAM at MST 2.
+	    The eight sprites the notification draws need about a kilobyte.
+
+	    `vramCnt` is the nine registers as of the last show(), the same instant `overlayDispcnt` is
+	    taken -- what the layout was when the overlay decided. In bank order A..I, with 0x04000247
+	    skipped because it is WRAMCNT rather than a bank.
+
+	    `vramEverOn` is one bit per bank, **accumulated every frame**: has this bank been enabled at
+	    any point this session? A bank that is off at the moment we look may be the game's a frame
+	    later -- that is precisely the mistake surveyBlocks() made with layer enable bits, and Contra 4
+	    charged for it. Never once on, for a whole session, is the claim worth acting on.
+	*/
+	u8  vramCnt[9];          /* +0xD4  VRAMCNT_A..I */
+	u8  vramPad;             /* +0xDD  to align what follows */
+	u16 vramEverOn;          /* +0xDE  bit 0 = bank A ... bit 8 = bank I */
+} raSnapshot;            /*              0xE0 bytes */
 
 /*
     A note on what that pair settled, because it is the answer to four hardware runs and it lives here

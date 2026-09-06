@@ -323,6 +323,67 @@ u32 raOverlayDispcnt;
     Three readings the background path takes anyway, published because a photograph cannot recover
     them. See raSnapshot.overlaySavedInk for what each one decides.
 */
+/*
+    The nine VRAM bank registers, which this overlay has never once looked at.
+
+    Every "is this block free?" question it has ever asked was answered by *inference*: read the four
+    BGCNTs, work out which 16K blocks they reference, call the rest spare. That reasoning has been
+    wrong on hardware three times, and it was always reasoning about the wrong thing. Which memory the
+    sub engine can even see is not a deduction -- it is nine bytes of I/O space, and bit 7 of each says
+    whether the bank is mapped at all.
+
+    A bank with its enable bit clear is not "probably unused". The game **cannot address it**: it is
+    not in any memory map the game's code can reach. Nothing can overwrite what we put there, and
+    nothing of the game's is lost by our taking it. That is a different class of answer from anything
+    surveyBlocks() can produce.
+
+    Which matters most for bank I: 16K, the smallest of the nine, and it maps to **sub-engine object
+    VRAM** at MST 2. The eight sprites this overlay draws need about a kilobyte. If a game leaves I
+    disabled, the notification can have tile memory that was never anyone's.
+
+    0x04000247 is skipped because it is not a VRAM bank -- it is WRAMCNT, sitting in the middle of the
+    range between G and H.
+
+    Two readings, because they answer different questions:
+
+      raOverlayVramCnt    the nine registers as of the last show(), the same moment overlayDispcnt is
+                          taken: what the layout was when we decided.
+
+      raOverlayVramEverOn a bit per bank, accumulated **every frame**: has this bank ever been enabled
+                          this session? A bank that was off when we looked may be the game's a frame
+                          later -- that is the exact mistake surveyBlocks() made with layer enable
+                          bits and paid for on Contra 4. A bank that has never once been on for the
+                          whole session is a far stronger claim, and it is the one worth acting on.
+*/
+#define VRAM_CNT_BASE 0x04000240
+#define VRAM_BANKS    9
+
+/* A..G are 0x240..0x246; 0x247 is WRAMCNT; H and I are 0x248 and 0x249. */
+static const u8 vramCntOffset[VRAM_BANKS] = { 0, 1, 2, 3, 4, 5, 6, 8, 9 };
+
+u8  raOverlayVramCnt[VRAM_BANKS];
+u16 raOverlayVramEverOn;
+
+static void vramAccumulate(void) {
+	const vu8* const cnt = (const vu8*)VRAM_CNT_BASE;
+	int i;
+
+	for (i = 0; i < VRAM_BANKS; i++) {
+		if (cnt[vramCntOffset[i]] & 0x80) {
+			raOverlayVramEverOn |= (u16)(1u << i);
+		}
+	}
+}
+
+static void vramSnapshot(void) {
+	const vu8* const cnt = (const vu8*)VRAM_CNT_BASE;
+	int i;
+
+	for (i = 0; i < VRAM_BANKS; i++) {
+		raOverlayVramCnt[i] = cnt[vramCntOffset[i]];
+	}
+}
+
 u16 raOverlaySavedInk;
 u16 raOverlaySavedShadow;
 u16 raOverlayBgCnt;
@@ -1020,6 +1081,7 @@ static void show(const void* text) {
 	    not when this lived in draw(), because a denial never reaches draw().
 	*/
 	raOverlayDispcnt = SUB_DISPCNT;
+	vramSnapshot();
 	raOverlayWindow  = (u32)SUB_WININ | ((u32)SUB_WINOUT << 16);
 
 	/*
@@ -1168,6 +1230,12 @@ void ra_overlay_tick(u32 unlocks, const void* text) {
 	    is live at 0x0400106C for anyone who wants the value.
 	*/
 	raOverlayState = (u8)((raOverlayState & 0x7F) | (pending ? 0x80 : 0));
+	/*
+	    Every frame, and cheap enough to be: nine byte reads from I/O space against the ~47 scanlines
+	    the reader's memref pass already spends. It has to be every frame -- the whole point is to
+	    catch a bank the game turns on for one scene and off again.
+	*/
+	vramAccumulate();
 
 	if (framesLeft) {
 		if (usingSprites) {

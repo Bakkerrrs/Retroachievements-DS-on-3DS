@@ -566,6 +566,16 @@ void ra_wram_tick(raSnapshot* snapshot) {
 			snapshot->overlaySavedShadow = raOverlaySavedShadow;
 			snapshot->overlayBgCnt       = raOverlayBgCnt;
 		}
+		{
+			extern u8  raOverlayVramCnt[9];
+			extern u16 raOverlayVramEverOn;
+			int b;
+
+			for (b = 0; b < 9; b++) {
+				snapshot->vramCnt[b] = raOverlayVramCnt[b];
+			}
+			snapshot->vramEverOn = raOverlayVramEverOn;
+		}
 		snapshot->overlayState   = raOverlayState;
 		snapshot->overlayDispcnt = raOverlayDispcnt;
 		snapshot->overlayWindow  = raOverlayWindow;
