@@ -9301,7 +9301,14 @@ and a player who uses the in-game menu heavily will meet it sooner here than on 
       Read back at `snapshot + 0xE0` after unlocking *Bomb Quartet*: sequence 1, id `0x000498DE`
       (301278), hardcore 1, length 12, and `Bomb Quartet` legible in the ASCII column. The half that
       draws it belongs to a patched `TwlBg` and does not exist yet; `docs/twlbg-overlay-proposal.md`
-      is the ask, and now carries that dump as a test vector.
+      is the ask, and now carries that dump as a test vector — along with the answer to the question
+      that decided whether any of it was possible. GBATEK's LGY register map settles it: the DS
+      picture reaches the 3DS screens as `NDS video controller -> LgyFB -> LGYFB_FIFO -> CDMA ->
+      memory -> PICA200`, and *"it's the job of the ARM11 and its DMA to take care of all memory
+      transfers during this process"*. There is a real framebuffer, in ordinary memory, in a format
+      the ARM11 chooses, filled by the ARM11 before the GPU displays it. Drawing into it is a memory
+      write between two steps that side already performs. What remains is finding where TwlBg keeps
+      that buffer, which needs the binary.
 - [ ] **Hardcore.** Blocked on nothing in this tree any more, and now measured rather
       than inferred: `h=1` from this client returns `Success:true` and is filed as a
       **softcore** unlock — hardcore score unchanged, `HardcoreUnlocks` empty,

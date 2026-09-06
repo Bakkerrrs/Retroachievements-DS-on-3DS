@@ -41,6 +41,8 @@ rather than on the ones where a survey happens to find a spare corner.
 
 ## What already exists
 
+- **The hardware path.** `LgyFB` puts the DS picture into ordinary memory by DMA, driven by the
+  ARM11, before the PICA200 displays it. Documented in GBATEK; see below.
 - **The channel.** RTCom — two free legacy RTC registers, readable and writable by both the ARM7 and
   the ARM11, refreshed every frame. It already gives DS games circle-pad input on a 3DS.
 - **The tooling.** TWPatcher builds a patched `TwlBg.cxi`, and TWiLight Menu already loads a
@@ -109,28 +111,66 @@ reader scans DS main RAM once at startup for the `RA2S` magic.
 we can publish one; it rides in the snapshot today only because allocating new memory in a running
 game's main RAM is the exact risk this project has spent a week removing. Say where you want it.
 
-## The two open questions we cannot answer from here
+## The pixels are in memory, and the ARM11 is what puts them there
 
-Honestly stated, because they are the ones that decide whether any of this is buildable:
+The obvious objection to all of the above is that TwlBg might never touch pixels — that the DS
+picture could go from the video controller to the LCD through hardware, with the ARM11 only setting
+filter coefficients. If that were so this proposal would end here.
 
-1. **Can a patched `TwlBg` composite new pixels at all?** Every published patch changes scaling,
-   filtering or input. We have found none that draws. If the answer is no, this proposal ends here.
-2. **Can the ARM11 read DS main RAM directly?** If it can, the table above is the whole interface. If
-   it cannot, the payload has to come over RTCom instead — two bytes per frame is 120 bytes/second,
-   so a 64-character title takes about half a second, which is well inside the delay before a
-   notification would be shown anyway. We would restructure to stream it.
+It is not so, and GBATEK documents why. The legacy video path is:
 
-We cannot investigate either one: `TwlBg` is Nintendo firmware that lives on the console, and we are
-not in a position to obtain or analyse it.
+```
+NDS video controller
+   -> LgyFB            hardware block, optional upscale (256x192 -> 320x240 at 1.25x)
+   -> LGYFB_FIFO       0x10310000 (bottom) / 0x10311000 (top)
+   -> CDMA             channels 0Dh/0Eh, one request per 8 output lines
+   -> memory           RGBA8888, RGB8880, RGB5551 or RGB5650, selected by LGYFB_CNT bits 8-9
+   -> PICA200          which displays it
+```
+
+GBATEK, verbatim: *"The input comes directly from the GBA/NDS video controller, **the output must be
+DMAed to memory**."* And on who does that: *"It's the job of the **ARM11** and its DMA to take care of
+all memory transfers during this process."*
+
+So there is a real framebuffer, in ordinary memory, in a format of the ARM11's own choosing, and the
+ARM11 is the party that fills it and then hands it to the GPU. **Drawing a line of text into it is a
+memory write between two steps the ARM11 already performs.** There is even `LGYFB_ALPHA` at `+0x20`
+if blending is wanted.
+
+Two more things fall out of the register map that are useful here:
+
+- **The two screens are independent units.** `LGYFB_0` at `0x10110000` is the NDS *bottom* screen and
+  `LGYFB_1` at `0x10111000` is the *top*. A notification can go on whichever suits, with no
+  negotiation of any kind with the game.
+- **Nothing about the game changes.** The DS side keeps every layer, sprite, palette entry and VRAM
+  bank it had. This is the property the DS-side overlay could never have.
+
+### What is left, honestly
+
+Knowing the hardware path is not the same as knowing TwlBg's code. What remains is finding where
+TwlBg keeps that buffer and where to hook between the DMA completing and the frame being handed to
+the PICA200 — and that needs the binary, which is Nintendo firmware living on the console. We are not
+in a position to obtain or analyse it. That is the work we are asking for, and it is now a bounded
+piece of reverse engineering against a documented hardware path rather than an open question about
+whether the idea is possible at all.
+
+### The one remaining unknown on our side
+
+**Can the ARM11 read DS main RAM directly?** If it can, the table above is the whole interface.
+
+There is published reason to think it can: 3dbrew's Legacy FIRM PXI page says the legacy ARM9 *"loads
+the TWL launcher located at physical address 0x27C00000, **which was written there by the TwlBg ARM11
+process**"* — so the two already share physical memory in that direction.
+
+If it turns out not to reach the region we use, RTCom is the fallback and costs nothing to switch to:
+two bytes per frame is 120 bytes/second, so a 64-character title streams in about half a second,
+which is well inside the delay before a notification would be shown anyway. Say which you prefer and
+we will restructure.
 
 ## What we will do
 
-Whatever shape suits you. If the answer to (1) is yes, we will match whatever interface you prefer —
-fixed address, RTCom streaming, a different structure, a different trigger. The DS half is small and
-we own it entirely.
-
-If the answer is no, we would still like to know, because it closes the last open route for this
-feature and that is worth writing down.
+Whatever shape suits you: fixed address, RTCom streaming, a different structure, a different trigger.
+The DS half is small, it is written, it is confirmed on hardware, and we own it entirely.
 
 ## Contact
 
