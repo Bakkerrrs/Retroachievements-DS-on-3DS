@@ -510,6 +510,14 @@ bool FAT_InitFiles (bool initCard)
 		return (false);
 	}
 
+	/*
+	    The boot sector is not file data, so this read leaves globalBuffer holding something no
+	    cache key describes. Every other overwriter in this file either updates the key
+	    (loadSectorBuf, resumeFileRead) or clears it (the directory scan below, fileWrite); this was
+	    the one that did neither, and relied on being called before any file was ever read. Clearing
+	    it here makes the rule complete rather than true by call order.
+	*/
+	prevSect[boolCard2] = -1;
 	// Read first sector of card
 	if (!CARD_ReadSector (0, globalBuffer[boolCard2], 0, 0, boolCard2))
 	{
@@ -617,6 +625,14 @@ bool FAT_InitFiles (bool initCard)
 		return (false);
 	}
 
+	/*
+	    The boot sector is not file data, so this read leaves globalBuffer holding something no
+	    cache key describes. Every other overwriter in this file either updates the key
+	    (loadSectorBuf, resumeFileRead) or clears it (the directory scan below, fileWrite); this was
+	    the one that did neither, and relied on being called before any file was ever read. Clearing
+	    it here makes the rule complete rather than true by call order.
+	*/
+	prevSect = -1;
 	// Read first sector of card
 	if (!CARD_ReadSector (0, globalBuffer, 0, 0))
 	{
@@ -1268,6 +1284,13 @@ static inline void loadSectorBuf(aFile* file, int curSect)
 #endif
 }
 
+/*
+    Called from bootloaderi and nowhere else, but it was being compiled into all six ARM7
+    cardengines, where the linker has no --gc-sections to drop it: twenty bytes of unreachable
+    code in the binary with forty-four to spare. BUILDFATTABLE is defined by the four bootloaders
+    and by no cardengine, so it is exactly the right fence.
+*/
+#ifdef BUILDFATTABLE
 void resetPrevSect(aFile* file)
 {
 #ifdef TWOCARD
@@ -1276,6 +1299,7 @@ void resetPrevSect(aFile* file)
 	prevSect = -1;
 #endif
 }
+#endif
 
 /*-----------------------------------------------------------------
 fileRead(buffer, cluster, startOffset, length)

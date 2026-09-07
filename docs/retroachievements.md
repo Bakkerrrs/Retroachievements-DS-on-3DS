@@ -8597,7 +8597,7 @@ it is the constraint that shaped the fix:
 linker script, so growing code moves its *start* past the region end. The TWL-SDK ARM7 had 60 bytes
 spare before this work and is the tightest binary in the tree.
 
-**`fileRead()` is deliberately left alone**, and that is a limitation rather than a decision I like.
+**`fileRead()` is deliberately left alone**, and that is a limitation rather than a decision I like. **Revisited and closed** -- see "The read half of the sector cache, closed by enumeration rather than by a bigger hammer". The exposure turned out to be a single site rather than the whole read path, and clearing the key in `fileRead()` -- the fix implied below -- would have taxed the game's ROM reads for nothing.
 It means a partial *read* can still be served from a stale buffer. The one place that mattered — the
 queue's slot scan — clears the cache itself before its first read, because the first read is the one
 that decides which slot gets written. Any other partial read in the project keeps the old exposure.
@@ -9174,6 +9174,95 @@ leans on the ROM cache, and that the failure is in the resume rather than in the
 What is worth carrying regardless is that **this fork raises the rate**, because it adds per-frame
 ARM9 work and takes DSi WRAM that would otherwise cache the ROM. That is a real cost of the feature,
 and a player who uses the in-game menu heavily will meet it sooner here than on a stock build.
+
+## The read half of the sector cache, closed by enumeration rather than by a bigger hammer
+
+`fileWrite()` was fixed when `ra_unlocks.txt` came back with 464 bytes of somebody else's memory, and
+that section ended with a limitation I did not like: **`fileRead()` is deliberately left alone**, so a
+partial read could still be served from a stale buffer. Coming back to it, the sentence was true and
+the shape of the fix I had in mind was wrong.
+
+### The obvious fix was the wrong one, and the reason is which function is on the hot path
+
+The symmetric move is to clear the key at the top of `fileRead()`, the way `fileWrite()` now does. That
+would be a real regression rather than a fix. `fileWrite()` runs when an unlock is queued -- a handful
+of times a session. **`fileRead()` is the game's ROM read path**, called for every card read the title
+makes, and the cache is what stops two reads inside one sector from costing two SD transfers.
+Invalidating there would buy correctness with a permanent tax on the thing this project has spent the
+most effort keeping cheap.
+
+So the question is not "how do we invalidate more" but "what can make the buffer disagree with the key
+in the first place". That is a finite list, and it can be read off the file.
+
+### Every writer of `globalBuffer`, and what each one leaves the key saying
+
+The key is `(prevFirstClust, prevSect, prevClust)`, and `prevSect + FAT_ClustToSect(prevClust)` names a
+physical sector uniquely -- two files cannot share a cluster -- so a key match implies the same sector.
+With that, the six sites are:
+
+| site | what it leaves behind |
+| --- | --- |
+| `FAT_InitFiles()` boot sector | **nothing described it** -- fixed here |
+| `getBootFileCluster()` directory scan | clears the key first, and it stays cleared for the whole scan |
+| `resumeFileRead()` partial | sets `prevSect` + `prevClust` |
+| `loadSectorBuf()` | sets all three |
+| `fileWrite()` head merge | buffer goes straight back out to that same sector, so buffer == disk |
+| `fileWrite()` tail merge | the same |
+
+And the other way a cached sector can go stale is the disk changing underneath it. `fileWrite()`'s bulk
+loop writes from the caller's buffer without touching `globalBuffer`, but the sectors it writes start
+*after* the head sector, which is the only one the key can be naming at that point. Outside `my_fat.c`
+nothing writes sectors at all: every `CARD_WriteSector` hit in the tree is the inline definition in
+`card.h`, not a call.
+
+**So the exposure was one site, not a class.** The boot-sector read in `FAT_InitFiles()` puts something
+in the buffer that no key describes, and got away with it because it happens before any file has been
+read. That is an argument about call order, not an invariant, and it stops being true the moment
+anything re-initialises a card mid-session. Two stores fix it, on a path that runs twice per boot.
+
+The invariant is now sayable in one line, which is the actual deliverable here: **every write into
+`globalBuffer` either updates the key to describe it, or clears the key.**
+
+### `resumeFileRead()` does not maintain `prevFirstClust`, and that is safe
+
+Worth writing down because it looks like a bug. It sets `prevSect` and `prevClust` and leaves
+`prevFirstClust` holding some earlier file's. Since `loadSectorBuf()` tests the three with `||`, a
+stale `prevFirstClust` can only produce a false *mismatch* -- one extra sector read, the safe
+direction. A false match would need the first cluster to agree while the other two named another
+file's sector, and the uniqueness argument above rules that out. Left alone.
+
+### The same bug was still live in the DLDI copy, untouched
+
+`retail/cardenginei/arm9_dldi/source_ext/my_fat.thumb.c` is a separate copy of this code for the ARM9
+DLDI cardengines, and it never got the `fileWrite()` fix at all. The read-modify-write that put a
+running game's memory into `ra_unlocks.txt` is still there, verbatim, for anyone running from a
+flashcard. Fixed to match, along with its boot-sector read.
+
+**This is untested by us and will stay that way**, stated rather than glossed: the rig here is SD on a
+3DS, which never loads those binaries. The change is the same two lines that were confirmed on hardware
+in the ARM7 copy, applied to identical code. `hb/common/source/my_fat.c` has no sector cache at all and
+needs nothing.
+
+### It paid for itself, and the linker is why that mattered
+
+The ARM7 TWL-SDK cardengine is the tightest binary in the tree and had **44 bytes** to spare -- the
+earlier attempt at this fix failed to link twice, which is what pushed it inline into `fileWrite()`
+last time. So before adding anything, something had to go:
+
+`resetPrevSect()` is called from `bootloaderi` and from nowhere else, but it was being compiled into
+all six ARM7 cardengines, where there is no `--gc-sections` to drop it. The map said so plainly: the
+symbol at `0x0303b554`, `fileRead` at `0x0303b568`, **twenty bytes of unreachable code**. `BUILDFATTABLE`
+is defined by the four bootloaders and by no cardengine, so it fences it exactly.
+
+Net across both changes, `__text_end` and `__bss_end` did not move at all and the margin is still 44
+bytes. Twenty bytes of dead code traded for the last hole in the cache, for free.
+
+### What a hardware test can show, honestly
+
+Nothing, if this is right. It closes a latent path rather than a reproducing failure, and the one
+observable change is in binaries this rig does not load. The test is a regression test: play normally,
+earn an unlock, and confirm the three conditions that have gated every build since the freeze -- no
+hang, the count in the menu correct, and `ra_unlocks.txt` clean.
 
 ## Status
 

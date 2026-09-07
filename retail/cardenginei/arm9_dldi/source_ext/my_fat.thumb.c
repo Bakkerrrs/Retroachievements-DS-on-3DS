@@ -366,6 +366,8 @@ bool FAT_InitFiles (bool initCard)
 	}
 
 	// Read first sector of card
+	/* Not file data: leave no cache key describing what this read puts in globalBuffer. */
+	prevSect = -1;
 	if (!CARD_ReadSector (0, globalBuffer, 0, 0)) 
 	{
 		#ifdef DEBUG
@@ -1086,6 +1088,15 @@ u32 fileWrite (const char* buffer, aFile* file, u32 startOffset, u32 length)
 	curSect = (startOffset & (discBytePerClus - 1)) / BYTES_PER_SECTOR;
 	curByte = startOffset % BYTES_PER_SECTOR;
 
+	/*
+	    A write that does not start on a sector boundary is a read-modify-write, and globalBuffer is
+	    shared: whatever ran since may have left another sector's bytes in it while the cache key
+	    still claims this one. Merging into that does not just return wrong data, it *writes* it.
+	    This is the same defect that put 464 bytes of a running game's memory into ra_unlocks.txt --
+	    see the ARM7 copy in retail/common/source/my_fat.c, which was fixed first. Forcing the read
+	    costs one sector per write that begins mid-sector, and an aligned write pays it once.
+	*/
+	prevSect = -1;
 	loadSectorBuf(file, curSect);
 
 	// Number of bytes needed to read to align with a sector
